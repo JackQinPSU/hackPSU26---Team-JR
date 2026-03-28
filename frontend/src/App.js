@@ -45,6 +45,15 @@ function MetricCard({ label, value }) {
   );
 }
 
+function boldHook(str) {
+  const s = String(str ?? "");
+  const idx = s.indexOf(" — ");
+  if (idx > 0 && idx < 60) {
+    return <><strong className="hook">{s.slice(0, idx)}</strong><span className="hook-sep"> — </span>{s.slice(idx + 3)}</>;
+  }
+  return s;
+}
+
 function FieldCard({ label, value }) {
   const renderContent = (v) => {
     if (Array.isArray(v)) {
@@ -53,7 +62,7 @@ function FieldCard({ label, value }) {
           {v.map((item, i) => (
             <li key={i}>
               <span className="check-circle">✓</span>
-              {typeof item === "object" ? JSON.stringify(item) : item}
+              <span>{typeof item === "object" ? JSON.stringify(item) : boldHook(item)}</span>
             </li>
           ))}
         </ul>
@@ -63,12 +72,12 @@ function FieldCard({ label, value }) {
       return (
         <ul className="checklist">
           {Object.entries(v).map(([k, val]) => (
-            <li key={k}><span className="check-circle">✓</span><strong>{k.replace(/_/g, " ")}:</strong> {String(val)}</li>
+            <li key={k}><span className="check-circle">✓</span><span><strong className="hook">{k.replace(/_/g, " ")}</strong><span className="hook-sep"> — </span>{String(val)}</span></li>
           ))}
         </ul>
       );
     }
-    return <p className="body-text">{String(v ?? "")}</p>;
+    return <p className="body-text">{boldHook(v)}</p>;
   };
 
   return (
