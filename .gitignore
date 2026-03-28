@@ -8,8 +8,9 @@ backend/.env
 node_modules/
 __pycache__/
 
-# openclaw (if anyone accidentally clones it inside your project)
+# openclaw
 openclaw/
+openclaw/.openclaw-config/
 
 # build output
 dist/
