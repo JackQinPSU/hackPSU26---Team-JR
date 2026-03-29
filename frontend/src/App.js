@@ -38,9 +38,9 @@ function StatusPill({ status }) {
 
 function MetricCard({ label, value }) {
   const display = Array.isArray(value) ? value[0] : typeof value === "object" && value ? Object.values(value)[0] : value;
-  const s = String(display ?? "—");
+  const s = coerceString(display) || "—";
   const idx = s.indexOf(" — ");
-  const inner = idx > 0 && idx < 60
+  const inner = idx > 0
     ? <><span className="metric-hook">{s.slice(0, idx)}</span><span className="metric-detail"> — {s.slice(idx + 3)}</span></>
     : <span className="metric-hook">{s}</span>;
   return (
@@ -51,10 +51,20 @@ function MetricCard({ label, value }) {
   );
 }
 
+function coerceString(val) {
+  if (val == null) return "";
+  if (typeof val === "string") return val;
+  if (typeof val === "object") {
+    const vals = Object.values(val).filter(v => typeof v === "string");
+    return vals.join(" — ");
+  }
+  return String(val);
+}
+
 function boldHook(str) {
-  const s = String(str ?? "");
+  const s = coerceString(str);
   const idx = s.indexOf(" — ");
-  if (idx > 0 && idx < 60) {
+  if (idx > 0) {
     return <><strong className="hook">{s.slice(0, idx)}</strong><span className="hook-sep"> — </span>{s.slice(idx + 3)}</>;
   }
   return s;
@@ -97,6 +107,76 @@ function FieldCard({ label, value }) {
   );
 }
 
+// ── Score Card ────────────────────────────────────────────────────────────────
+function ScoreCard({ score }) {
+  if (!score || score.overall == null) return null;
+
+  const { overall, verdict, verdict_reason, M, D, R, E, penalties, dimension_notes, main_risk } = score;
+
+  const scoreColor = overall >= 75 ? "var(--green)" : overall >= 65 ? "var(--amber)" : "var(--red)";
+
+  const dims = [
+    { key: "M", label: "Market",      val: M },
+    { key: "D", label: "Differentiation", val: D },
+    { key: "R", label: "Revenue",     val: R },
+    { key: "E", label: "Execution",   val: E },
+  ];
+
+  const activePenalties = penalties
+    ? Object.entries(penalties).filter(([, v]) => v).map(([k]) => k.replace(/_/g, " "))
+    : [];
+
+  return (
+    <div className="score-card">
+      <div className="score-top">
+        <div className="score-overall-block">
+          <div className="score-number" style={{ color: scoreColor }}>{overall}</div>
+          <div className="score-verdict" style={{ color: scoreColor }}>{verdict}</div>
+        </div>
+        <div className="score-dims">
+          {dims.map(d => (
+            <div key={d.key} className="score-dim">
+              <div className="score-dim-label">{d.label}</div>
+              <div className="score-dim-bar-track">
+                <div className="score-dim-bar-fill" style={{ width: `${d.val}%`, background: d.val >= 75 ? "var(--green)" : d.val >= 55 ? "var(--amber)" : "var(--red)" }} />
+              </div>
+              <div className="score-dim-val">{d.val}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {verdict_reason && <div className="score-reason">{verdict_reason}</div>}
+
+      {dims.some(d => dimension_notes?.[d.key]) && (
+        <div className="score-notes">
+          {dims.filter(d => dimension_notes?.[d.key]).map(d => (
+            <div key={d.key} className="score-note">
+              <span className="score-note-key">{d.key}</span>
+              <span className="score-note-text">{dimension_notes[d.key]}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {activePenalties.length > 0 && (
+        <div className="score-penalties">
+          {activePenalties.map(p => (
+            <span key={p} className="score-penalty-pill">⚠ {p}</span>
+          ))}
+        </div>
+      )}
+
+      {main_risk && (
+        <div className="score-risk">
+          <span className="score-risk-label">Main risk</span>
+          <span className="score-risk-text">{main_risk}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Agent Panel ───────────────────────────────────────────────────────────────
 function AgentPanel({ agentKey, data, status, onApprove, onRedirect, loading }) {
   const [showRedirect, setShowRedirect] = useState(false);
@@ -126,7 +206,7 @@ function AgentPanel({ agentKey, data, status, onApprove, onRedirect, loading }) 
     );
   }
 
-  const allKeys = Object.keys(data).filter(k => k !== "status");
+  const allKeys = Object.keys(data).filter(k => k !== "status" && k !== "score");
   const bodyFields = cfg.body.length
     ? cfg.body.filter(k => allKeys.includes(k))
     : allKeys.filter(k => !cfg.metrics.includes(k) && !cfg.highlights.includes(k));
@@ -145,6 +225,8 @@ function AgentPanel({ agentKey, data, status, onApprove, onRedirect, loading }) 
           ))}
         </div>
       )}
+
+      {agentKey === "idea" && <ScoreCard score={data.score} />}
 
       {cfg.highlights.filter(k => data[k] != null).map(k => (
         <div key={k} className="highlight-text">{String(data[k])}</div>
@@ -188,11 +270,16 @@ function AgentPanel({ agentKey, data, status, onApprove, onRedirect, loading }) 
 // ── Team Panel ────────────────────────────────────────────────────────────────
 function TeamPanel({ data, teamStatus, onApproveTeam, onRemoveTeam, onRedirectTeam, onExecuteTeam, executing }) {
   const [addingRole, setAddingRole] = useState(false);
+  const [showAddInput, setShowAddInput] = useState(false);
+  const [roleInput, setRoleInput] = useState("");
 
   const handleAddRole = async () => {
+    if (!roleInput.trim()) return;
     setAddingRole(true);
+    setShowAddInput(false);
     await onRedirectTeam(null, data,
-      "Add one more critical founding role we are missing. Return the full updated team array including this new role.");
+      `Add a "${roleInput.trim()}" role to the founding team. Return the full updated team array including this new member with appropriate responsibilities, skills, and week1_task.`);
+    setRoleInput("");
     setAddingRole(false);
   };
 
@@ -223,9 +310,10 @@ function TeamPanel({ data, teamStatus, onApproveTeam, onRemoveTeam, onRedirectTe
               {member.responsibilities?.map((r, j) => <li key={j}>{boldHook(r)}</li>)}
             </ul>
             {!teamStatus[i] ? (
-              <button className="btn-approve" onClick={() => onApproveTeam(i)}>
-                ✓ Approve
-              </button>
+              <div className="team-card-actions">
+                <button className="btn-approve" onClick={() => onApproveTeam(i)}>✓ Approve</button>
+                <button className="btn-disapprove" onClick={() => onRemoveTeam(i)}>✕ Remove</button>
+              </div>
             ) : (
               <div className="ready-status-row">
                 <span className="ready-status">✓ Ready to start</span>
@@ -234,9 +322,34 @@ function TeamPanel({ data, teamStatus, onApproveTeam, onRemoveTeam, onRedirectTe
             )}
           </div>
         ))}
-        <button className="team-card add-role-card" onClick={handleAddRole} disabled={addingRole}>
-          {addingRole ? <><div className="spinner-sm" /> Adding role...</> : <><span className="add-icon">+</span> Add role</>}
-        </button>
+
+        {/* Add role card */}
+        {showAddInput ? (
+          <div className="team-card add-role-input-card">
+            <div className="add-role-label">What role do you need?</div>
+            <input
+              className="add-role-input"
+              type="text"
+              placeholder="e.g. UX Designer, Sales Lead..."
+              value={roleInput}
+              onChange={e => setRoleInput(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && handleAddRole()}
+              autoFocus
+            />
+            <div className="add-role-buttons">
+              <button className="btn-approve" onClick={handleAddRole} disabled={!roleInput.trim()}>
+                Add role
+              </button>
+              <button className="btn-disapprove" onClick={() => { setShowAddInput(false); setRoleInput(""); }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button className="team-card add-role-card" onClick={() => setShowAddInput(true)} disabled={addingRole}>
+            {addingRole ? <><div className="spinner-sm" /> Adding role...</> : <><span className="add-icon">+</span> Add role</>}
+          </button>
+        )}
       </div>
 
       {/* Execute trigger */}
@@ -478,6 +591,50 @@ export default function App() {
   const [builtUrl, setBuiltUrl]       = useState(null);
   const [selected, setSelected]       = useState("idea");
   const [error, setError]             = useState("");
+  const [savedRuns, setSavedRuns]     = useState(() => {
+    try { return JSON.parse(localStorage.getItem("founderos_runs") || "[]"); }
+    catch { return []; }
+  });
+  const [savedMsg, setSavedMsg]       = useState(false);
+
+  const saveRun = () => {
+    const run = {
+      id: Date.now(),
+      savedAt: new Date().toISOString(),
+      prompt,
+      result,
+      agentStatus,
+      teamStatus,
+      tasks,
+      reports,
+      reportStatus,
+      builtUrl,
+    };
+    const updated = [run, ...savedRuns].slice(0, 30);
+    setSavedRuns(updated);
+    localStorage.setItem("founderos_runs", JSON.stringify(updated));
+    setSavedMsg(true);
+    setTimeout(() => setSavedMsg(false), 2000);
+  };
+
+  const loadRun = (run) => {
+    setPrompt(run.prompt || "");
+    setResult(run.result || {});
+    setAgentStatus(run.agentStatus || {});
+    setTeamStatus(run.teamStatus || {});
+    setTasks(run.tasks || []);
+    setReports(run.reports || []);
+    setReportStatus(run.reportStatus || {});
+    setBuiltUrl(run.builtUrl || null);
+    setSelected("idea");
+    setError("");
+  };
+
+  const deleteRun = (id) => {
+    const updated = savedRuns.filter(r => r.id !== id);
+    setSavedRuns(updated);
+    localStorage.setItem("founderos_runs", JSON.stringify(updated));
+  };
 
   const generate = async () => {
     if (!prompt.trim()) return;
@@ -517,13 +674,10 @@ export default function App() {
           if (key === "error") { setError(data); setLoading(false); return; }
           if (key === "tasks") {
             setTasks(data.tasks || []);
-            setSelected("tasks");
           } else if (key.startsWith("report_")) {
             setReports(prev => [...prev, data]);
-            setSelected("reports");
           } else {
             setResult(prev => ({ ...prev, [key]: data }));
-            setSelected(key);
           }
         }
       }
@@ -615,7 +769,7 @@ export default function App() {
           const { key, data } = JSON.parse(raw);
           if (key === "error") { setError(data); setExecuting(false); return; }
           if (key === "tasks") { setTasks(data.tasks || []); }
-          else if (key.startsWith("report_")) { setReports(prev => [...prev, data]); setSelected("reports"); }
+          else if (key.startsWith("report_")) { setReports(prev => [...prev, data]); }
         }
       }
     } catch (e) {
@@ -717,6 +871,32 @@ export default function App() {
             {loading ? <><span className="spinner-sm" /> Spinning up your team...</> : "Launch →"}
           </button>
           {error && <div className="error-box">{error}</div>}
+
+          {savedRuns.length > 0 && (
+            <div className="saved-runs">
+              <div className="saved-runs-title">Past runs</div>
+              <div className="run-list">
+                {savedRuns.map(run => {
+                  const name = run.result?.brand?.startup_name
+                    ? coerceString(run.result.brand.startup_name).split(" — ")[0]
+                    : null;
+                  const date = new Date(run.savedAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+                  return (
+                    <div key={run.id} className="run-card">
+                      <div className="run-card-content">
+                        <div className="run-card-name">{name || run.prompt.slice(0, 48) + (run.prompt.length > 48 ? "…" : "")}</div>
+                        <div className="run-card-meta">{name ? (run.prompt.length > 55 ? run.prompt.slice(0, 55) + "…" : run.prompt) + " · " : ""}{date}</div>
+                      </div>
+                      <div className="run-card-actions">
+                        <button className="btn-load-run" onClick={() => loadRun(run)}>Load</button>
+                        <button className="btn-delete-run" onClick={() => deleteRun(run.id)}>✕</button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -750,6 +930,9 @@ export default function App() {
           ))}
         </nav>
 
+        <button className="btn-save" onClick={saveRun}>
+          {savedMsg ? "✓ Saved" : "Save run"}
+        </button>
         <button className="btn-new" onClick={() => { setResult(null); setPrompt(""); setTasks([]); setReports([]); setReportStatus({}); setBuiltUrl(null); }}>
           + New idea
         </button>

@@ -3,6 +3,7 @@ const express = require("express");
 const cors = require("cors");
 const fs = require("fs");
 const path = require("path");
+const { calcScore, getVerdict, getVerdictReason } = require("./scoreCalc");
 
 const app = express();
 app.use(cors());
@@ -42,9 +43,56 @@ app.post("/generate", async (req, res) => {
         "problem": "CORE PROBLEM — one sentence describing it specifically",
         "target_users": "WHO — specific description of target users",
         "domain": "INDUSTRY — specific domain or vertical",
-        "core_goal": "END STATE — what success looks like in one sentence"
+        "core_goal": "END STATE — what success looks like in one sentence",
+        "score": {
+          "M": 0,
+          "D": 0,
+          "R": 0,
+          "E": 0,
+          "penalties": {
+            "saturated_market": false,
+            "high_tech_risk": false,
+            "no_monetization": false,
+            "regulatory_risk": false
+          },
+          "dimension_notes": {
+            "M": "one sentence why",
+            "D": "one sentence why",
+            "R": "one sentence why",
+            "E": "one sentence why"
+          },
+          "main_risk": "single biggest risk in one honest sentence"
+        }
       }
+
+      Score this idea honestly across 4 dimensions. Use integers 0-100.
+      Do not inflate. An average idea scores 55-65. A strong idea 75-85.
+      Reserve 85+ for genuinely novel ideas with clear monetization and low competition.
+      Base all scores on a solo bootstrapped founder with no funding.
+
+      Dimension definitions:
+      - M = Market opportunity: realistic size, growth, and timing for this specific idea
+      - D = Differentiation: how unique is this vs existing competitors
+      - R = Revenue clarity: how obvious and direct is the path to getting paid
+      - E = Execution feasibility: can a solo founder realistically build this in 6 months
+
+      Penalty rules (set true only if the condition clearly applies):
+      - saturated_market: 3 or more dominant well-funded incumbents already exist
+      - high_tech_risk: requires unproven, experimental, or very hard-to-build technology
+      - no_monetization: no clear way to charge users or businesses
+      - regulatory_risk: heavily regulated industry (healthcare, finance, legal, etc.)
     `);
+
+    // Compute score server-side from raw dimensions + penalties
+    if (idea.score) {
+      const { M, D, R, E, penalties } = idea.score;
+      const dims = { M: M || 0, D: D || 0, R: R || 0, E: E || 0 };
+      const overall = calcScore(dims, penalties || {});
+      idea.score.overall = overall;
+      idea.score.verdict = getVerdict(overall);
+      idea.score.verdict_reason = getVerdictReason(dims, penalties || {}, overall);
+    }
+
     send("idea", idea);
 
     const context = `Startup idea: "${prompt}"\nParsed context: ${JSON.stringify(idea)}`;
@@ -69,9 +117,14 @@ app.post("/generate", async (req, res) => {
       ${context}
       Return ONLY valid JSON, no markdown.
       Format every string value and array item as "BOLD HOOK — supporting detail".
+      Be realistic and conservative. No vanity numbers. Base estimates on a bootstrapped solo founder with no funding.
+      For market_size: size it to the actual addressable market for THIS specific idea, not the broad industry.
+      A local food delivery app is not a "$200B food delivery market" — it is the realistic slice this founder can reach.
+      If the idea is local, niche, or early-stage, the honest SAM might be $500K–$5M. That is fine and more credible.
+      Cite the reasoning: who are the real customers, how many of them exist, what would they pay, do the math.
       {
         "competitors": ["COMPANY NAME — what they do and why they fall short", "COMPANY NAME — ...", "COMPANY NAME — ..."],
-        "market_size": "$XB MARKET — specific size with reasoning",
+        "market_size": "REALISTIC DOLLAR FIGURE — specific reasoning: X customers × $Y price × Z frequency",
         "market_gap": "THE GAP — specific unmet need none of them fill",
         "differentiation": "OUR EDGE — the one thing that makes this win",
         "status": "Market analysis complete. Awaiting your approval."
@@ -84,11 +137,15 @@ app.post("/generate", async (req, res) => {
       ${context}
       Return ONLY valid JSON, no markdown.
       Format every string value and array item as "BOLD HOOK — supporting detail".
+      Be realistic and conservative. No vanity numbers. Base this on a bootstrapped solo founder with no funding.
+      Pricing must match what real customers in this specific market actually pay — not aspirational enterprise rates.
+      Break-even must be honest: account for slow early growth, churn, and the reality that the first 6 months often bring almost no revenue.
+      Do NOT default to generic SaaS tiers — reason from the specific idea and customer type.
       {
-        "pricing": "FREE / $29 / $99 — what each tier includes",
-        "revenue_model": "SAAS — monthly subscriptions, expand on model specifics",
-        "cost_structure": ["INFRA — ~40% of budget, detail", "TEAM — ~35% of budget, detail", "MARKETING — ~25% of budget, detail"],
-        "break_even": "MONTH 14 — reasoning based on growth assumptions",
+        "pricing": "specific tier names and realistic prices — what each tier includes",
+        "revenue_model": "MODEL TYPE — specific mechanics of how money is made",
+        "cost_structure": ["BIGGEST COST — realistic % of budget and why", "SECOND COST — ...", "THIRD COST — ..."],
+        "break_even": "HONEST MONTH ESTIMATE — show the math: how many paying customers needed, at what price, given realistic growth",
         "status": "Business model drafted. Awaiting your approval."
       }
     `);
@@ -115,11 +172,18 @@ app.post("/generate", async (req, res) => {
       Return ONLY valid JSON, no markdown.
       Format why_now and ask as "BOLD HOOK — supporting detail".
       one_liner and pitch_30s should be plain compelling prose.
+      Be realistic and conservative. No vanity numbers. Base this on a bootstrapped solo founder with no funding.
+      For the ask: reason from first principles. What does this specific startup actually need to reach its first real milestone?
+      Many bootstrapped ideas need $0 to start — sweat equity, free tiers, and nights-and-weekends time.
+      If outside money is genuinely needed, size it to what is actually required — not what sounds impressive.
+      A solo dev tool might need $0–$20K. A local service might need $5K–$30K. Only complex products with real infrastructure costs need more.
+      Do NOT inflate the ask to seem like a "real" startup. Credibility comes from honest numbers.
+      State exactly what the money funds and the specific milestone it hits.
       {
         "one_liner": "under 15 words, hooks immediately — no jargon",
         "pitch_30s": "3 punchy sentences: problem, solution, why now",
         "why_now": "THE SHIFT — specific real-world trend making this timely right now",
-        "ask": "$500K SEED — exactly what it funds and the 12-month timeline",
+        "ask": "REALISTIC AMOUNT AND STAGE — exactly what it funds and the milestone it hits",
         "status": "Pitch ready. Awaiting your approval."
       }
     `);
@@ -180,14 +244,25 @@ app.post("/execute-team", async (req, res) => {
       Market: ${JSON.stringify(market)}
 
       Assign exactly one concrete Week 1 task per team member.
+
+      CRITICAL CONSTRAINT: Every task must produce a document, artifact, or piece of code that can be written right now.
+      This is a pre-launch startup with no live product and no real users yet.
+      NEVER assign tasks that require a live product, real users, or real-world actions. Forbidden examples:
+      - "Acquire X users" or "Get beta signups" — there is no product to sign up for yet
+      - "Run a marketing campaign" — there is no audience yet
+      - "Onboard customers" — there are no customers yet
+      - "Analyze user feedback" — there is no feedback yet
+      - "Set up sales calls" — there is no pipeline yet
+      Instead assign tasks whose output is a written artifact: code, spec, doc, wireframe, copy, plan, analysis, schema, contract template, pitch deck, etc.
+
       Return ONLY valid JSON:
       {
         "tasks": [
           {
             "task_id": "task_001",
             "assigned_to": "exact role title matching team",
-            "title": "DELIVERABLE — what specifically gets produced",
-            "description": "concrete output expected in plain terms",
+            "title": "DELIVERABLE — what specific artifact gets produced",
+            "description": "concrete written/coded output expected in plain terms",
             "depends_on": [],
             "status": "pending"
           }
@@ -228,6 +303,10 @@ app.post("/execute-team", async (req, res) => {
         - Marketer → write actual ad copy, taglines, email sequences
         - Designer → write an actual design spec with component details and UX flows
         - Analyst → write an actual analysis with real numbers and projections
+
+        CRITICAL: This startup has no live product and no real users yet. Do not produce deliverables that assume otherwise.
+        Never write things like "reach out to 20 users", "analyze signup data", or "run ads" — none of that exists yet.
+        Everything you produce must be a document, plan, code file, or written artifact you can create from scratch right now.
 
         Be specific to ${startupName}. Never write generic placeholder content.
 
