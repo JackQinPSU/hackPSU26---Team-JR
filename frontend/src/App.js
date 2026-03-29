@@ -287,7 +287,7 @@ function TasksPanel({ tasks, reports, loading }) {
           const done = completedRoles.has(task.assigned_to);
           return (
             <div key={i} className={`task-row ${done ? "done" : ""}`}>
-              <div className="task-status-dot" style={{ background: done ? "#34d399" : "#EF9F27" }} />
+              <div className="task-status-dot" style={{ background: done ? "#28cd41" : "#ff9500" }} />
               <div className="task-info">
                 <div className="task-title">{boldHook(task.title)}</div>
                 <div className="task-meta">{task.assigned_to}</div>
@@ -672,23 +672,23 @@ export default function App() {
 
   const getDotColor = (key) => {
     if (key === "tasks") {
-      if (!tasks.length) return "#2a2a3a";
-      return reports.length === tasks.length ? "#1D9E75" : "#EF9F27";
+      if (!tasks.length) return "#d1d1d6";
+      return reports.length === tasks.length ? "#28cd41" : "#ff9500";
     }
     if (key === "reports") {
-      if (!reports.length) return "#2a2a3a";
+      if (!reports.length) return "#d1d1d6";
       const approved = Object.values(reportStatus).filter(v => v === "approved").length;
-      return approved === reports.length ? "#1D9E75" : "#EF9F27";
+      return approved === reports.length ? "#28cd41" : "#ff9500";
     }
     if (key === "team") {
-      if (!result?.team) return "#2a2a3a";
+      if (!result?.team) return "#d1d1d6";
       const t = result.team?.team || [];
-      return t.length > 0 && Object.keys(teamStatus).length === t.length ? "#1D9E75" : "#EF9F27";
+      return t.length > 0 && Object.keys(teamStatus).length === t.length ? "#28cd41" : "#ff9500";
     }
     const s = getStatus(key);
-    if (!result?.[key]) return "#2a2a3a";
-    if (s === "approved") return "#1D9E75";
-    return "#EF9F27";
+    if (!result?.[key]) return "#d1d1d6";
+    if (s === "approved") return "#28cd41";
+    return "#ff9500";
   };
 
   const hasData = (key) => {
